@@ -2,17 +2,17 @@
 main.py — Discord bot that triages Wazuh alerts using Claude.
 
 Listens for messages in the configured Wazuh alerts channel.
-For each Wazuh embed, replies in a thread with a Claude triage report.
+For each Wazuh embed or plain-text alert, replies in a thread
+with a Claude triage report.
 """
 
 import os
 import asyncio
 import logging
 import discord
-from discord.ext import commands
 from dotenv import load_dotenv
 
-from parser import parse_embed, WazuhAlert
+from parser import parse_embed, parse_text, WazuhAlert
 from triage import triage_alert
 
 load_dotenv()
@@ -24,15 +24,11 @@ log = logging.getLogger("wazuh-triage")
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-DISCORD_TOKEN      = os.environ["DISCORD_TOKEN"]
-WAZUH_CHANNEL_ID   = int(os.environ["WAZUH_CHANNEL_ID"])   # channel Wazuh posts to
-TRIAGE_BOT_NAME    = os.environ.get("TRIAGE_BOT_NAME", "Wazuh Triage Bot")
+DISCORD_TOKEN    = os.environ["DISCORD_TOKEN"]
+WAZUH_CHANNEL_ID = int(os.environ["WAZUH_CHANNEL_ID"])
+TRIAGE_DELAY     = float(os.environ.get("TRIAGE_DELAY_SECONDS", "2"))
 
-# How long to wait between receiving an alert and posting triage (seconds).
-# Small delay avoids race conditions if Wazuh edits the embed after posting.
-TRIAGE_DELAY       = float(os.environ.get("TRIAGE_DELAY_SECONDS", "2"))
-
-# ── Bot setup ─────────────────────────────────────────────────────────────────
+# ── Bot ───────────────────────────────────────────────────────────────────────
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -50,23 +46,26 @@ def severity_color(level: int) -> discord.Color:
 
 
 async def post_triage(message: discord.Message, alert: WazuhAlert):
-    """Run Claude triage and post the result as a thread reply."""
+    """Run Claude triage in a thread executor (sync SDK) and post result."""
     await asyncio.sleep(TRIAGE_DELAY)
 
-    # Create or fetch thread on the alert message
+    # Create thread on the alert message
+    thread_name = f"Triage · Rule {alert.rule_id} · {alert.agent_name}"[:100]
     try:
         thread = await message.create_thread(
-            name=f"Triage · Rule {alert.rule_id} · {alert.agent_name}",
-            auto_archive_duration=1440,  # 24h
+            name=thread_name,
+            auto_archive_duration=1440,
         )
-    except discord.HTTPException:
-        # Thread already exists or can't be created — fall back to channel reply
+    except discord.HTTPException as e:
+        log.warning(f"Could not create thread: {e} — replying in channel")
         thread = message.channel
 
-    # Typing indicator while Claude thinks
     async with thread.typing():
         try:
-            triage_text = await triage_alert(alert)
+            # Run the synchronous Anthropic SDK call in a thread pool
+            # so we don't block the Discord event loop
+            loop = asyncio.get_event_loop()
+            triage_text = await loop.run_in_executor(None, triage_alert, alert)
         except Exception as e:
             log.error(f"Triage API error for rule {alert.rule_id}: {e}")
             await thread.send(
@@ -78,52 +77,60 @@ async def post_triage(message: discord.Message, alert: WazuhAlert):
             )
             return
 
-    # Build the triage embed
     embed = discord.Embed(
         title=f"🤖 AI Triage · Rule {alert.rule_id}",
         description=triage_text,
         color=severity_color(alert.rule_level),
     )
-    embed.add_field(name="Agent",    value=f"`{alert.agent_name}` ({alert.agent_ip})", inline=True)
-    embed.add_field(name="Level",    value=f"`{alert.rule_level}` {alert.severity}",   inline=True)
-    embed.add_field(name="Rule",     value=alert.rule_description,                     inline=False)
+    embed.add_field(name="Agent",  value=f"`{alert.agent_name}` ({alert.agent_ip})", inline=True)
+    embed.add_field(name="Level",  value=f"`{alert.rule_level}` {alert.severity}",   inline=True)
+    embed.add_field(name="Rule",   value=alert.rule_description or "—",              inline=False)
     embed.set_footer(text=f"Triaged by Claude · Manager: {alert.manager}")
 
     await thread.send(embed=embed)
-    log.info(f"Posted triage for rule {alert.rule_id} on agent {alert.agent_name}")
+    log.info(f"Triage posted: rule={alert.rule_id} agent={alert.agent_name}")
 
 
-# ── Event handlers ────────────────────────────────────────────────────────────
+# ── Events ────────────────────────────────────────────────────────────────────
 
 @bot.event
 async def on_ready():
     log.info(f"Logged in as {bot.user} (id={bot.user.id})")
-    log.info(f"Watching channel id={WAZUH_CHANNEL_ID} for Wazuh alerts")
+    log.info(f"Watching channel id={WAZUH_CHANNEL_ID}")
 
 
 @bot.event
 async def on_message(message: discord.Message):
-    # Only care about the configured Wazuh channel
     if message.channel.id != WAZUH_CHANNEL_ID:
         return
-
-    # Ignore messages from ourselves
     if message.author == bot.user:
         return
 
-    # Wazuh posts embeds — skip plain text messages
-    if not message.embeds:
-        return
+    log.debug(
+        f"Message in wazuh channel: author={message.author} "
+        f"embeds={len(message.embeds)} content_len={len(message.content)}"
+    )
 
+    alert = None
+
+    # Try embed format first (standard Wazuh Discord integration)
     for embed in message.embeds:
         alert = parse_embed(embed)
         if alert:
-            log.info(
-                f"Wazuh alert detected: rule={alert.rule_id} "
-                f"level={alert.rule_level} agent={alert.agent_name}"
-            )
-            # Fire and forget — don't block the event loop
-            asyncio.create_task(post_triage(message, alert))
+            break
+
+    # Fall back to plain text parsing (some Wazuh webhook configs post text)
+    if not alert and message.content:
+        alert = parse_text(message.content)
+
+    if alert:
+        log.info(
+            f"Wazuh alert: rule={alert.rule_id} level={alert.rule_level} "
+            f"agent={alert.agent_name} desc={alert.rule_description!r}"
+        )
+        asyncio.create_task(post_triage(message, alert))
+    else:
+        log.debug("Message in wazuh channel did not match Wazuh alert format — skipped")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
