@@ -122,7 +122,7 @@ async def post_triage(message: discord.Message, alert: WazuhAlert):
     embed.add_field(name="Agent",  value=f"`{alert.agent_name}` ({alert.agent_ip})", inline=True)
     embed.add_field(name="Level",  value=f"`{alert.rule_level}` {alert.severity}",   inline=True)
     embed.add_field(name="Rule",   value=alert.rule_description or "—",              inline=False)
-    embed.set_footer(text=f"Triaged by Claude · Manager: {alert.manager}")
+    embed.set_footer(text=f"Triaged by AI · Manager: {alert.manager}")
 
     await thread.send(embed=embed)
     log.info(f"Triage posted: rule={alert.rule_id} agent={alert.agent_name}")

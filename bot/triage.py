@@ -1,12 +1,19 @@
 """
-triage.py — synchronous Claude triage call (run via run_in_executor).
+triage.py — synchronous LLM triage call (run via run_in_executor).
+
+Supports local Ollama or any OpenAI-compatible API.
+Configure via environment variables:
+  OLLAMA_BASE_URL  — Ollama endpoint (default: http://localhost:11434/v1)
+  OLLAMA_MODEL     — model name (default: phi3:mini)
 """
 
 import os
-import anthropic
+from openai import OpenAI
 from parser import WazuhAlert
 
-MODEL = "claude-opus-4-6"
+BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+MODEL    = os.environ.get("OLLAMA_MODEL", "phi3:mini")
+API_KEY  = os.environ.get("OPENAI_API_KEY", "ollama")  # Ollama ignores this
 
 SYSTEM_PROMPT = """You are an expert security analyst triaging Wazuh SIEM alerts.
 You receive structured alert data and produce concise, actionable triage reports.
@@ -41,11 +48,13 @@ Triage this alert."""
 
 def triage_alert(alert: WazuhAlert) -> str:
     """Synchronous call — run via asyncio.run_in_executor to avoid blocking."""
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    msg = client.messages.create(
+    client = OpenAI(base_url=BASE_URL, api_key=API_KEY)
+    resp = client.chat.completions.create(
         model=MODEL,
         max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": build_prompt(alert)}],
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": build_prompt(alert)},
+        ],
     )
-    return msg.content[0].text
+    return resp.choices[0].message.content

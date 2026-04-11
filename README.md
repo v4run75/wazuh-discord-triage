@@ -1,12 +1,12 @@
 # wazuh-discord-triage
 
-Discord bot that watches your Wazuh alerts channel and automatically replies to each alert with an AI triage report from Claude.
+Discord bot that watches your Wazuh alerts channel and automatically replies to each alert with an AI triage report. Runs locally on a Raspberry Pi with Ollama — no cloud API needed.
 
 ## How it works
 
 1. Wazuh posts an alert embed to your Discord channel
 2. The bot detects it, extracts rule ID, level, agent, and full log
-3. Sends it to Claude with a security analyst prompt
+3. Sends it to a local LLM (Ollama) with a security analyst prompt
 4. Replies in a **thread** on the original alert with a structured triage
 
 Example triage for Rule 550 (FIM integrity change):
@@ -34,13 +34,25 @@ Example triage for Rule 550 (FIM integrity change):
 Right-click the Wazuh alerts channel → Copy Channel ID  
 (Enable Developer Mode in Discord settings first)
 
-### 3. Configure
+### 3. Install Ollama on the Pi
 ```bash
-cp .env.example .env
-# Edit .env with your tokens and channel ID
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull phi3:mini    # 3.8B params, ~2.3GB RAM — good fit for 8GB Pi
 ```
 
-### 4. Run on Raspberry Pi
+Other models that fit 8GB:
+- `llama3.2:3b` — solid general purpose
+- `qwen2.5:3b` — strong at structured tasks
+- `gemma2:2b` — smallest/fastest
+
+### 4. Configure
+```bash
+cp .env.example .env
+# Edit .env with your Discord token and channel ID
+# Ollama defaults work out of the box if running on same machine
+```
+
+### 5. Run on Raspberry Pi
 
 ```bash
 # Build and start
@@ -50,7 +62,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-### 4a. Or run without Docker
+### 5a. Or run without Docker
 ```bash
 pip install -r requirements.txt
 cp .env.example .env  # fill in values
@@ -63,7 +75,9 @@ cd bot && python main.py
 |---|---|---|
 | `DISCORD_TOKEN` | Yes | Discord bot token |
 | `WAZUH_CHANNEL_ID` | Yes | Channel ID where Wazuh posts alerts |
-| `ANTHROPIC_API_KEY` | Yes | Claude API key |
+| `OLLAMA_BASE_URL` | No | Ollama API endpoint (default: `http://localhost:11434/v1`) |
+| `OLLAMA_MODEL` | No | Model name (default: `phi3:mini`) |
+| `OPENAI_API_KEY` | No | Only needed for cloud APIs (OpenAI, etc) |
 | `TRIAGE_DELAY_SECONDS` | No | Delay before triaging (default: 2s) |
 
 ## Architecture
@@ -72,7 +86,9 @@ cd bot && python main.py
 bot/
   main.py      Discord client, event handling, thread creation
   parser.py    Extracts structured data from Wazuh Discord embeds
-  triage.py    Sends alert to Claude API, returns triage markdown
+  triage.py    Sends alert to LLM (Ollama/OpenAI-compatible), returns triage markdown
 ```
 
 Supports all Wazuh rule levels. Thread is created on each alert message so triage replies stay organised alongside the original alert.
+
+Uses the OpenAI Python SDK pointing at Ollama's compatible API — swap to any OpenAI-compatible endpoint (OpenAI, Azure, local vLLM, etc.) by changing `OLLAMA_BASE_URL` and `OLLAMA_MODEL`.
