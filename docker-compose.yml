@@ -1,0 +1,13 @@
+services:
+  wazuh-triage:
+    build: .
+    image: wazuh-discord-triage:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
