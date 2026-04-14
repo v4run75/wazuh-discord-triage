@@ -4,7 +4,7 @@ triage.py — synchronous LLM triage call (run via run_in_executor).
 Uses OpenRouter (openrouter.ai) — access hundreds of models with one API key.
 Configure via environment variables:
   OPENROUTER_API_KEY  — your OpenRouter API key (required)
-  OPENROUTER_MODEL    — model slug (default: anthropic/claude-sonnet-4-5)
+  OPENROUTER_MODEL    — model slug (default: google/gemini-2.5-flash)
 
 Free models share upstream quota across all OpenRouter users. If the primary
 model is rate-limited, the bot automatically falls back through FALLBACK_MODELS.
@@ -16,18 +16,18 @@ from openai import OpenAI, RateLimitError
 from parser import WazuhAlert
 
 BASE_URL = "https://openrouter.ai/api/v1"
-MODEL    = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4-5")
+MODEL    = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
 API_KEY  = os.environ["OPENROUTER_API_KEY"]
 
-# Fallback chain — tried in order on 429
+# Fallback chain — tried in order on 429 (cheapest paid first, Sonnet last resort)
 FALLBACK_MODELS = [
-    "google/gemini-2.5-flash",
     "google/gemma-4-31b-it",
+    "anthropic/claude-sonnet-4-5",
     "openai/gpt-oss-120b:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
     "qwen/qwen3-next-80b-a3b-instruct:free",
     "meta-llama/llama-3.2-3b-instruct:free",
-    "openrouter/free",                          # last resort
+    "openrouter/free",
 ]
 
 SYSTEM_PROMPT = """You are an expert security analyst triaging Wazuh SIEM alerts.
