@@ -19,8 +19,12 @@ BASE_URL = "https://openrouter.ai/api/v1"
 MODEL    = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
 API_KEY  = os.environ["OPENROUTER_API_KEY"]
 
-# No other free models available — retry logic handles transient 429s
-FALLBACK_MODELS: list[str] = []
+# Fallback chain — tried in order on 429
+FALLBACK_MODELS = [
+    "openai/gpt-oss-120b:free",           # 120B dense, best reasoning
+    "nvidia/nemotron-3-super-120b-a12b:free",  # 120B MoE (12B active)
+    "qwen/qwen3-next-80b-a3b-instruct:free",   # 80B MoE (3B active)
+]
 
 SYSTEM_PROMPT = """You are an expert security analyst triaging Wazuh SIEM alerts.
 You receive structured alert data and produce concise, actionable triage reports.
