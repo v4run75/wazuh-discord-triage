@@ -19,10 +19,8 @@ BASE_URL = "https://openrouter.ai/api/v1"
 MODEL    = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
 API_KEY  = os.environ["OPENROUTER_API_KEY"]
 
-# Tried in order if primary model returns 429
-FALLBACK_MODELS = [
-    "mistralai/mistral-7b-instruct:free",
-]
+# No other free models available — retry logic handles transient 429s
+FALLBACK_MODELS: list[str] = []
 
 SYSTEM_PROMPT = """You are an expert security analyst triaging Wazuh SIEM alerts.
 You receive structured alert data and produce concise, actionable triage reports.
