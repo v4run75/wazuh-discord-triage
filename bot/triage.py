@@ -30,18 +30,14 @@ FALLBACK_MODELS = [
     "openrouter/free",
 ]
 
-SYSTEM_PROMPT = """You are an expert security analyst triaging Wazuh SIEM alerts.
-You receive structured alert data and produce concise, actionable triage reports.
+SYSTEM_PROMPT = """You are a security analyst triaging Wazuh SIEM alerts.
 
-For each alert assess:
-1. What actually happened (plain English, no jargon)
+For each alert provide:
+1. What happened (plain English)
 2. True positive or false positive — and why
-3. Severity in context (Wazuh level alone isn't enough — use your knowledge)
-4. Recommended immediate actions for the SOC analyst
-5. MITRE ATT&CK technique if applicable (e.g. T1070.004)
+3. Severity in context
 
-Keep response under 400 words. Use bullet points. Be direct.
-Do NOT restate raw log data verbatim — synthesise it."""
+Keep response under 150 words. Be direct. Do not restate raw log data."""
 
 
 def build_prompt(alert: WazuhAlert) -> str:
