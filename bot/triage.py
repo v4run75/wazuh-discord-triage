@@ -12,7 +12,7 @@ from openai import OpenAI
 from parser import WazuhAlert
 
 BASE_URL = "https://openrouter.ai/api/v1"
-MODEL    = os.environ.get("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+MODEL    = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-31b:free")
 API_KEY  = os.environ["OPENROUTER_API_KEY"]
 
 SYSTEM_PROMPT = """You are an expert security analyst triaging Wazuh SIEM alerts.
