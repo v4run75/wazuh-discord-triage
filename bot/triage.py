@@ -21,7 +21,7 @@ API_KEY  = os.environ["OPENROUTER_API_KEY"]
 
 # Tried in order if primary model returns 429
 FALLBACK_MODELS = [
-    "mistralai/mistral-7b-instruct",
+    "mistralai/mistral-7b-instruct:free",
 ]
 
 SYSTEM_PROMPT = """You are an expert security analyst triaging Wazuh SIEM alerts.
