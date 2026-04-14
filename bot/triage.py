@@ -4,7 +4,7 @@ triage.py — synchronous LLM triage call (run via run_in_executor).
 Uses OpenRouter (openrouter.ai) — access hundreds of models with one API key.
 Configure via environment variables:
   OPENROUTER_API_KEY  — your OpenRouter API key (required)
-  OPENROUTER_MODEL    — model slug (default: google/gemini-2.5-flash)
+  OPENROUTER_MODEL    — model slug (default: anthropic/claude-sonnet-4-5)
 
 Free models share upstream quota across all OpenRouter users. If the primary
 model is rate-limited, the bot automatically falls back through FALLBACK_MODELS.
@@ -16,13 +16,13 @@ from openai import OpenAI, RateLimitError
 from parser import WazuhAlert
 
 BASE_URL = "https://openrouter.ai/api/v1"
-MODEL    = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+MODEL    = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4-5")
 API_KEY  = os.environ["OPENROUTER_API_KEY"]
 
 # Fallback chain — tried in order on 429
 FALLBACK_MODELS = [
-    "anthropic/claude-sonnet-4-5",             # Claude Sonnet (paid)
-    "google/gemma-4-31b-it:free",              # free tier starts here
+    "google/gemini-2.5-flash",
+    "google/gemma-4-31b-it",
     "openai/gpt-oss-120b:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
     "qwen/qwen3-next-80b-a3b-instruct:free",
