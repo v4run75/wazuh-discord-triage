@@ -4,16 +4,26 @@ triage.py — synchronous LLM triage call (run via run_in_executor).
 Uses OpenRouter (openrouter.ai) — access hundreds of models with one API key.
 Configure via environment variables:
   OPENROUTER_API_KEY  — your OpenRouter API key (required)
-  OPENROUTER_MODEL    — model slug (default: meta-llama/llama-3.1-8b-instruct:free)
+  OPENROUTER_MODEL    — model slug (default: google/gemma-4-31b-it:free)
+
+Free models share upstream quota across all OpenRouter users. If the primary
+model is rate-limited, the bot automatically falls back through FALLBACK_MODELS.
 """
 
 import os
-from openai import OpenAI
+import time
+from openai import OpenAI, RateLimitError
 from parser import WazuhAlert
 
 BASE_URL = "https://openrouter.ai/api/v1"
 MODEL    = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
 API_KEY  = os.environ["OPENROUTER_API_KEY"]
+
+# Tried in order if primary model returns 429
+FALLBACK_MODELS = [
+    "google/gemma-4-26b-a4b:free",
+    "mistralai/mistral-7b-instruct:free",
+]
 
 SYSTEM_PROMPT = """You are an expert security analyst triaging Wazuh SIEM alerts.
 You receive structured alert data and produce concise, actionable triage reports.
@@ -46,8 +56,21 @@ Full Log:
 Triage this alert."""
 
 
+def _call(client: OpenAI, model: str, prompt: str) -> str:
+    resp = client.chat.completions.create(
+        model=model,
+        max_tokens=1024,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    return resp.choices[0].message.content
+
+
 def triage_alert(alert: WazuhAlert) -> str:
-    """Synchronous call — run via asyncio.run_in_executor to avoid blocking."""
+    """Synchronous call — run via asyncio.run_in_executor to avoid blocking.
+    Retries once on 429, then falls back through FALLBACK_MODELS."""
     client = OpenAI(
         base_url=BASE_URL,
         api_key=API_KEY,
@@ -56,12 +79,18 @@ def triage_alert(alert: WazuhAlert) -> str:
             "X-Title": "Wazuh Discord Triage",
         },
     )
-    resp = client.chat.completions.create(
-        model=MODEL,
-        max_tokens=1024,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_prompt(alert)},
-        ],
-    )
-    return resp.choices[0].message.content
+    prompt = build_prompt(alert)
+    models_to_try = [MODEL] + FALLBACK_MODELS
+
+    for i, model in enumerate(models_to_try):
+        try:
+            # Retry the same model once after a short wait before falling back
+            try:
+                return _call(client, model, prompt)
+            except RateLimitError:
+                time.sleep(5)
+                return _call(client, model, prompt)
+        except RateLimitError:
+            if i < len(models_to_try) - 1:
+                continue  # try next model
+            raise
