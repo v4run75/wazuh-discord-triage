@@ -1,19 +1,19 @@
 """
 triage.py — synchronous LLM triage call (run via run_in_executor).
 
-Supports local Ollama or any OpenAI-compatible API.
+Uses OpenRouter (openrouter.ai) — access hundreds of models with one API key.
 Configure via environment variables:
-  OLLAMA_BASE_URL  — Ollama endpoint (default: http://localhost:11434/v1)
-  OLLAMA_MODEL     — model name (default: phi3:mini)
+  OPENROUTER_API_KEY  — your OpenRouter API key (required)
+  OPENROUTER_MODEL    — model slug (default: meta-llama/llama-3.1-8b-instruct:free)
 """
 
 import os
 from openai import OpenAI
 from parser import WazuhAlert
 
-BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-MODEL    = os.environ.get("OLLAMA_MODEL", "phi3:mini")
-API_KEY  = os.environ.get("OPENAI_API_KEY", "ollama")  # Ollama ignores this
+BASE_URL = "https://openrouter.ai/api/v1"
+MODEL    = os.environ.get("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
+API_KEY  = os.environ["OPENROUTER_API_KEY"]
 
 SYSTEM_PROMPT = """You are an expert security analyst triaging Wazuh SIEM alerts.
 You receive structured alert data and produce concise, actionable triage reports.
@@ -48,7 +48,14 @@ Triage this alert."""
 
 def triage_alert(alert: WazuhAlert) -> str:
     """Synchronous call — run via asyncio.run_in_executor to avoid blocking."""
-    client = OpenAI(base_url=BASE_URL, api_key=API_KEY)
+    client = OpenAI(
+        base_url=BASE_URL,
+        api_key=API_KEY,
+        default_headers={
+            "HTTP-Referer": "https://github.com/v4run75/wazuh-discord-triage",
+            "X-Title": "Wazuh Discord Triage",
+        },
+    )
     resp = client.chat.completions.create(
         model=MODEL,
         max_tokens=1024,

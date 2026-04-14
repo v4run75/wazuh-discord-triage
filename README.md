@@ -1,12 +1,12 @@
 # wazuh-discord-triage
 
-Discord bot that watches your Wazuh alerts channel and automatically replies to each alert with an AI triage report. Runs locally on a Raspberry Pi with Ollama — no cloud API needed.
+Discord bot that watches your Wazuh alerts channel and automatically replies to each alert with an AI triage report. Uses [OpenRouter](https://openrouter.ai) — one API key, access to hundreds of models including free tiers.
 
 ## How it works
 
 1. Wazuh posts an alert embed to your Discord channel
 2. The bot detects it, extracts rule ID, level, agent, and full log
-3. Sends it to a local LLM (Ollama) with a security analyst prompt
+3. Sends it to an LLM via OpenRouter with a security analyst prompt
 4. Replies in a **thread** on the original alert with a structured triage
 
 Example triage for Rule 550 (FIM integrity change):
@@ -34,22 +34,13 @@ Example triage for Rule 550 (FIM integrity change):
 Right-click the Wazuh alerts channel → Copy Channel ID  
 (Enable Developer Mode in Discord settings first)
 
-### 3. Install Ollama on the Pi
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull phi3:mini    # 3.8B params, ~2.3GB RAM — good fit for 8GB Pi
-```
-
-Other models that fit 8GB:
-- `llama3.2:3b` — solid general purpose
-- `qwen2.5:3b` — strong at structured tasks
-- `gemma2:2b` — smallest/fastest
+### 3. Get an OpenRouter API key
+Sign up at [openrouter.ai](https://openrouter.ai/keys) — free tier available with models like `meta-llama/llama-3.1-8b-instruct:free`.
 
 ### 4. Configure
 ```bash
 cp .env.example .env
-# Edit .env with your Discord token and channel ID
-# Ollama defaults work out of the box if running on same machine
+# Set DISCORD_TOKEN, WAZUH_CHANNEL_ID, OPENROUTER_API_KEY
 ```
 
 ### 5. Run on Raspberry Pi
@@ -75,10 +66,17 @@ cd bot && python main.py
 |---|---|---|
 | `DISCORD_TOKEN` | Yes | Discord bot token |
 | `WAZUH_CHANNEL_ID` | Yes | Channel ID where Wazuh posts alerts |
-| `OLLAMA_BASE_URL` | No | Ollama API endpoint (default: `http://localhost:11434/v1`) |
-| `OLLAMA_MODEL` | No | Model name (default: `phi3:mini`) |
-| `OPENAI_API_KEY` | No | Only needed for cloud APIs (OpenAI, etc) |
+| `OPENROUTER_API_KEY` | Yes | OpenRouter API key |
+| `OPENROUTER_MODEL` | No | Model slug (default: `meta-llama/llama-3.1-8b-instruct:free`) |
 | `TRIAGE_DELAY_SECONDS` | No | Delay before triaging (default: 2s) |
+
+### Recommended models on OpenRouter
+| Model | Cost | Quality |
+|---|---|---|
+| `meta-llama/llama-3.1-8b-instruct:free` | Free | Good |
+| `mistralai/mistral-7b-instruct:free` | Free | Good |
+| `meta-llama/llama-3.1-70b-instruct` | ~$0.001/alert | Better |
+| `anthropic/claude-3.5-sonnet` | ~$0.01/alert | Best |
 
 ## Architecture
 
@@ -91,4 +89,4 @@ bot/
 
 Supports all Wazuh rule levels. Thread is created on each alert message so triage replies stay organised alongside the original alert.
 
-Uses the OpenAI Python SDK pointing at Ollama's compatible API — swap to any OpenAI-compatible endpoint (OpenAI, Azure, local vLLM, etc.) by changing `OLLAMA_BASE_URL` and `OLLAMA_MODEL`.
+Uses the OpenAI Python SDK pointing at OpenRouter's API. Swap models anytime by changing `OPENROUTER_MODEL` — no code changes needed.
