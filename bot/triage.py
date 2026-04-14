@@ -21,9 +21,11 @@ API_KEY  = os.environ["OPENROUTER_API_KEY"]
 
 # Fallback chain — tried in order on 429
 FALLBACK_MODELS = [
-    "openai/gpt-oss-120b:free",           # 120B dense, best reasoning
+    "openai/gpt-oss-120b:free",                # 120B dense, best reasoning
     "nvidia/nemotron-3-super-120b-a12b:free",  # 120B MoE (12B active)
     "qwen/qwen3-next-80b-a3b-instruct:free",   # 80B MoE (3B active)
+    "meta-llama/llama-3.2-3b-instruct:free",   # 3B, lightweight fallback
+    "openrouter/free",                          # auto-routes to any available free model
 ]
 
 SYSTEM_PROMPT = """You are an expert security analyst triaging Wazuh SIEM alerts.
