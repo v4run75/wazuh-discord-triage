@@ -69,7 +69,7 @@ def _call(client: OpenAI, model: str, prompt: str) -> str:
     return resp.choices[0].message.content
 
 
-def triage_alert(alert: WazuhAlert) -> str:
+def triage_alert(alert: WazuhAlert, extra_context: str = "") -> str:
     """Synchronous call — run via asyncio.run_in_executor to avoid blocking.
     Retries once on 429, then falls back through FALLBACK_MODELS."""
     client = OpenAI(
@@ -81,6 +81,8 @@ def triage_alert(alert: WazuhAlert) -> str:
         },
     )
     prompt = build_prompt(alert)
+    if extra_context:
+        prompt += f"\n\nAdditional context from analyst:\n{extra_context}"
     models_to_try = [MODEL] + FALLBACK_MODELS
 
     for i, model in enumerate(models_to_try):

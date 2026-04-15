@@ -44,8 +44,66 @@ def severity_color(level: int) -> discord.Color:
     return discord.Color.greyple()
 
 
+async def _run_triage(interaction: discord.Interaction, view: "TriageView", extra_context: str = ""):
+    """Shared triage runner — disables all buttons, calls LLM, posts result."""
+    # Disable all buttons immediately
+    for item in view.children:
+        item.disabled = True
+    await interaction.edit_original_response(view=view)
+
+    async with interaction.channel.typing():
+        try:
+            loop = asyncio.get_event_loop()
+            triage_text = await loop.run_in_executor(
+                None, triage_alert, view.alert, extra_context
+            )
+        except Exception as e:
+            log.error(f"Triage error: {e}")
+            await interaction.channel.send(
+                embed=discord.Embed(
+                    title="⚠️ Triage Failed",
+                    description=f"`{e}`",
+                    color=discord.Color.red(),
+                )
+            )
+            return
+
+    embed = discord.Embed(
+        title=f"🤖 AI Triage · Rule {view.alert.rule_id}",
+        description=triage_text,
+        color=severity_color(view.alert.rule_level),
+    )
+    embed.add_field(name="Agent", value=f"`{view.alert.agent_name}` ({view.alert.agent_ip})", inline=True)
+    embed.add_field(name="Level", value=f"`{view.alert.rule_level}` {view.alert.severity}", inline=True)
+    embed.add_field(name="Rule",  value=view.alert.rule_description or "—", inline=False)
+    if extra_context:
+        embed.add_field(name="Analyst Context", value=extra_context[:1024], inline=False)
+    embed.set_footer(text=f"Triaged by AI · Manager: {view.alert.manager}")
+
+    await interaction.channel.send(embed=embed)
+    log.info(f"Triage posted: rule={view.alert.rule_id} agent={view.alert.agent_name}")
+
+
+class TriageModal(ui.Modal, title="Triage with Custom Prompt"):
+    context_input = ui.TextInput(
+        label="Additional context",
+        style=discord.TextStyle.paragraph,
+        placeholder="e.g. This host runs a nightly backup at 2am, check if timing matches...",
+        required=True,
+        max_length=1000,
+    )
+
+    def __init__(self, view: "TriageView"):
+        super().__init__()
+        self.view = view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await _run_triage(interaction, self.view, extra_context=str(self.context_input))
+
+
 class TriageView(ui.View):
-    """Persistent view with a single Triage button. Disabled after first use."""
+    """Two triage buttons — standard and with custom analyst prompt."""
 
     def __init__(self, alert: WazuhAlert):
         super().__init__(timeout=None)
@@ -53,43 +111,12 @@ class TriageView(ui.View):
 
     @ui.button(label="Triage with AI", style=discord.ButtonStyle.primary, emoji="🤖")
     async def triage_button(self, interaction: discord.Interaction, button: ui.Button):
-        # Disable the button immediately so it can't be double-clicked
-        button.disabled = True
-        button.label = "Triaging..."
-        await interaction.response.edit_message(view=self)
+        await interaction.response.defer()
+        await _run_triage(interaction, self)
 
-        async with interaction.channel.typing():
-            try:
-                loop = asyncio.get_event_loop()
-                triage_text = await loop.run_in_executor(None, triage_alert, self.alert)
-            except Exception as e:
-                log.error(f"Triage error: {e}")
-                button.label = "Triage Failed"
-                await interaction.edit_original_response(view=self)
-                await interaction.channel.send(
-                    embed=discord.Embed(
-                        title="⚠️ Triage Failed",
-                        description=f"`{e}`",
-                        color=discord.Color.red(),
-                    )
-                )
-                return
-
-        button.label = "Triaged"
-        await interaction.edit_original_response(view=self)
-
-        embed = discord.Embed(
-            title=f"🤖 AI Triage · Rule {self.alert.rule_id}",
-            description=triage_text,
-            color=severity_color(self.alert.rule_level),
-        )
-        embed.add_field(name="Agent", value=f"`{self.alert.agent_name}` ({self.alert.agent_ip})", inline=True)
-        embed.add_field(name="Level", value=f"`{self.alert.rule_level}` {self.alert.severity}", inline=True)
-        embed.add_field(name="Rule",  value=self.alert.rule_description or "—", inline=False)
-        embed.set_footer(text=f"Triaged by AI · Manager: {self.alert.manager}")
-
-        await interaction.channel.send(embed=embed)
-        log.info(f"Triage posted: rule={self.alert.rule_id} agent={self.alert.agent_name}")
+    @ui.button(label="Triage with Prompt", style=discord.ButtonStyle.secondary, emoji="✏️")
+    async def triage_prompt_button(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_modal(TriageModal(self))
 
 
 async def process_message(message: discord.Message):
