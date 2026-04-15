@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from parser import parse_embed, parse_text, WazuhAlert
 from triage import triage_alert
+from history import save_alert
 
 load_dotenv()
 logging.basicConfig(
@@ -146,6 +147,8 @@ async def process_message(message: discord.Message):
         log.info("Message did not match Wazuh alert format — skipped")
         return
 
+    save_alert(alert)
+    log.info(f"Alert saved to history: rule={alert.rule_id} agent={alert.agent_name}")
     _seen.add(message.id)
 
     thread_name = f"Rule {alert.rule_id} · {alert.agent_name}"[:100]

@@ -6,8 +6,14 @@ services:
     env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
+      - ALERT_DB_PATH=/data/alerts.db
+    volumes:
+      - alert_history:/data
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  alert_history:

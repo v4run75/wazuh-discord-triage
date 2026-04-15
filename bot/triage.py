@@ -14,6 +14,7 @@ import os
 import time
 from openai import OpenAI, RateLimitError
 from parser import WazuhAlert
+from history import get_previous_alerts
 
 BASE_URL = "https://openrouter.ai/api/v1"
 MODEL    = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
@@ -41,6 +42,16 @@ Keep response under 150 words. Be direct. Do not restate raw log data."""
 
 
 def build_prompt(alert: WazuhAlert) -> str:
+    previous = get_previous_alerts(alert, limit=2)
+
+    history_section = ""
+    if previous:
+        history_section = "\n\n**Previous alerts (same rule + agent) for comparison:**\n"
+        for i, row in enumerate(previous, 1):
+            label = "Previous" if i == 1 else f"{i} alerts ago"
+            history_section += f"\n--- {label} ({row['received_at']} UTC) ---\n```\n{row['full_log']}\n```"
+        history_section += "\n\nNote any changes between previous and current logs (e.g. ports opened/closed, new processes)."
+
     return f"""**Wazuh Alert Triage Request**
 
 Rule ID: {alert.rule_id}
@@ -49,11 +60,11 @@ Severity: Level {alert.rule_level} ({alert.severity})
 Agent: {alert.agent_name} ({alert.agent_ip})
 Manager: {alert.manager}
 
-Full Log:
+**Current Log:**
 ```
 {alert.full_log}
 ```
-
+{history_section}
 Triage this alert."""
 
 

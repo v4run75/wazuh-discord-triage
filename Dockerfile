@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY bot/ ./bot/
 
 # Run as non-root
-RUN useradd -m botuser
+RUN useradd -m botuser && mkdir -p /data && chown botuser /data
 USER botuser
 
 WORKDIR /app/bot
