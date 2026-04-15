@@ -11,8 +11,9 @@ import threading
 from datetime import datetime
 from parser import WazuhAlert
 
-DB_PATH      = os.environ.get("ALERT_DB_PATH", "/data/alerts.db")
-HISTORY_LIMIT = int(os.environ.get("ALERT_HISTORY_LIMIT", "3"))
+DB_PATH        = os.environ.get("ALERT_DB_PATH", "/data/alerts.db")
+HISTORY_LIMIT  = int(os.environ.get("ALERT_HISTORY_LIMIT", "3"))
+HISTORY_RULES  = {"533"}  # only store/compare history for these rule IDs
 
 _local = threading.local()
 
@@ -45,7 +46,10 @@ def _conn() -> sqlite3.Connection:
 
 
 def save_alert(alert: WazuhAlert) -> None:
-    """Persist alert and prune old entries beyond HISTORY_LIMIT."""
+    """Persist alert and prune old entries beyond HISTORY_LIMIT.
+    Only stores alerts for rule IDs in HISTORY_RULES."""
+    if alert.rule_id not in HISTORY_RULES:
+        return
     conn = _conn()
     conn.execute(
         """INSERT INTO alert_history
@@ -77,7 +81,10 @@ def save_alert(alert: WazuhAlert) -> None:
 
 def get_previous_alerts(alert: WazuhAlert, limit: int = 2) -> list[sqlite3.Row]:
     """Return up to `limit` previous alerts for the same rule + agent, newest first.
-    Excludes the most recent row (which is the one just saved)."""
+    Excludes the most recent row (which is the one just saved).
+    Returns empty list for rules not in HISTORY_RULES."""
+    if alert.rule_id not in HISTORY_RULES:
+        return []
     conn = _conn()
     rows = conn.execute(
         """SELECT full_log, received_at FROM alert_history
